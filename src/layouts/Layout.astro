@@ -1,0 +1,65 @@
+---
+interface Props {
+    title: string;
+    description?: string;
+    image?: string;
+}
+
+const {
+    title,
+    description = "Descripción de la página por defecto",
+    image = "/imagen-og.webp",
+} = Astro.props;
+
+import { ClientRouter } from "astro:transitions";
+import "../styles/global.css";
+---
+
+<!doctype html>
+<html lang="es">
+    <head>
+        <ClientRouter />
+
+        <!-- Global site tag (gtag.js) - Google Analytics -->
+        <script
+            async
+            src="https://www.googletagmanager.com/gtag/js?id=G-QB27T902DL"
+        ></script>
+
+        <script is:inline>
+            window.dataLayer = window.dataLayer || [];
+            function gtag() {
+                dataLayer.push(arguments);
+            }
+            gtag("js", new Date());
+            gtag("config", "G-QB27T902DL");
+        </script>
+
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+        <meta name="generator" content={Astro.generator} />
+
+        <!-- SEO Básico -->
+        <title>{title}</title>
+        <meta name="description" content={description} />
+        <link rel="canonical" href="https://tusitio.com/" />
+
+        <!-- Open Graph / Facebook (URL en texto plano como fue solicitado) -->
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content="https://tusitio.com/" />
+        <meta property="og:title" content={title} />
+        <meta property="og:description" content={description} />
+        <meta property="og:image" content={image} />
+
+        <!-- Twitter (URL en texto plano) -->
+        <meta property="twitter:card" content="summary_large_image" />
+        <meta property="twitter:url" content="https://tusitio.com/" />
+        <meta property="twitter:title" content={title} />
+        <meta property="twitter:description" content={description} />
+        <meta property="twitter:image" content={image} />
+    </head>
+    <body>
+        <slot />
+    </body>
+</html>
