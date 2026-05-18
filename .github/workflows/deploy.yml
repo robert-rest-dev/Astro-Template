@@ -1,0 +1,138 @@
+name: Build and Deploy dist to deploy branch
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deploy-dist
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Ensure orphan deploy branch exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin
+
+          if git ls-remote --exit-code --heads origin deploy; then
+            echo "deploy branch already exists"
+          else
+            echo "Creating orphan deploy branch..."
+            git checkout --orphan deploy
+            git rm -rf . || true
+            git commit --allow-empty -m "Initialize deploy branch"
+            git push origin deploy
+          fi
+
+          # Asegura volver a main siempre
+          git checkout main
+
+      - name: Detect package manager
+        id: pm
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -f pnpm-lock.yaml ]; then
+            echo "manager=pnpm" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ -f package-lock.json ]; then
+            echo "manager=npm" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "No supported lockfile found. Add pnpm-lock.yaml or package-lock.json." >&2
+          exit 1
+
+      - name: Install pnpm
+        if: steps.pm.outputs.manager == 'pnpm'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.0
+          run_install: false
+
+      - name: Setup Node (pnpm)
+        if: steps.pm.outputs.manager == 'pnpm'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Setup Node (npm)
+        if: steps.pm.outputs.manager == 'npm'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies (pnpm)
+        if: steps.pm.outputs.manager == 'pnpm'
+        run: pnpm install --frozen-lockfile --config.dangerousAllowAllBuilds=true
+
+      - name: Install dependencies (npm)
+        if: steps.pm.outputs.manager == 'npm'
+        run: npm ci
+
+      - name: Build (pnpm)
+        if: steps.pm.outputs.manager == 'pnpm'
+        run: pnpm run build
+
+      - name: Build (npm)
+        if: steps.pm.outputs.manager == 'npm'
+        run: npm run build
+
+      - name: Download formSend.php into dist
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ ! -d "dist" ]; then
+            echo "dist/ not found. Did the build generate it?" >&2
+            exit 1
+          fi
+
+          echo "Downloading formSend.php..."
+          curl -fsSL "https://caribemedia.s3.us-east-1.amazonaws.com/public/formSend.php"             -o "dist/formSend.php"
+
+          if [ ! -s "dist/formSend.php" ]; then
+            echo "Downloaded formSend.php is empty" >&2
+            exit 1
+          fi
+
+          # Extra safety: asegúrate que parece PHP
+          if ! head -n 2 dist/formSend.php | grep -qi "<?php"; then
+            echo "formSend.php doesn't look like PHP (missing <?php). Possible HTML error page." >&2
+            exit 1
+          fi
+
+          echo "formSend.php saved to dist/formSend.php"
+
+      - name: Deploy dist to deploy branch
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          branch: deploy
+          folder: dist
+          clean: true
+          force: true
+
